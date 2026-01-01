@@ -25,19 +25,9 @@ progress_store = {}
 def get_db_conn():
     return pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, db=DB_NAME, charset='utf8mb4', autocommit=True)
 
-# [수정됨] 실제 IP를 가져오는 함수 추가
-def get_client_ip():
-    """
-    헤더(X-Forwarded-For)를 확인하여 실제 클라이언트 IP를 반환합니다.
-    헤더가 없으면 기존 방식(remote_addr)을 사용합니다.
-    """
-    if request.headers.getlist("X-Forwarded-For"):
-        return request.headers.getlist("X-Forwarded-For")[0]
-    return request.remote_addr
-
 def add_activity_log(action_type, details):
     """상세 활동 로그를 DB에 저장합니다."""
-    ip = get_client_ip() # [수정됨] 함수 적용
+    ip = request.remote_addr
     try:
         conn = get_db_conn()
         cur = conn.cursor()
@@ -63,7 +53,7 @@ def get_remain_count(ip, action_type):
 
 def check_limit(action_type):
     if session.get('is_admin'): return True
-    ip = get_client_ip() # [수정됨] 함수 적용
+    ip = request.remote_addr
     remain = get_remain_count(ip, action_type)
     if remain <= 0: return False
     
@@ -91,14 +81,13 @@ def index():
 
 @app.route('/history')
 def history_page():
-    """관리자 전용 로그 확인 페이지"""
     if not session.get('is_admin'):
         return "<script>alert('권한이 없습니다.'); location.href='/';</script>"
     return render_template('history.html')
 
 @app.route('/api/status')
 def api_status():
-    ip = get_client_ip() # [수정됨] 함수 적용
+    ip = request.remote_addr
     return jsonify({
         "dl": get_remain_count(ip, 'download'),
         "cv": get_remain_count(ip, 'convert'),
@@ -109,7 +98,6 @@ def api_status():
 
 @app.route('/api/admin/logs')
 def get_admin_logs():
-    """관리자용 로그 데이터 API"""
     if not session.get('is_admin'): return jsonify({"error": "Unauthorized"}), 403
     
     conn = get_db_conn()
@@ -118,7 +106,6 @@ def get_admin_logs():
     logs = cur.fetchall()
     conn.close()
     
-    # datetime 객체 문자열 변환
     for log in logs:
         log['created_at'] = log['created_at'].strftime('%Y-%m-%d %H:%M:%S')
         
@@ -127,16 +114,20 @@ def get_admin_logs():
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
+    password = data.get('password')
+    
     conn = get_db_conn()
     cur = conn.cursor()
-    cur.execute("SELECT id, is_admin FROM users WHERE username=%s AND password=%s", (data.get('username'), data.get('password')))
+    # 비밀번호만 일치하고 관리자 권한(is_admin=1)인 계정 확인
+    cur.execute("SELECT id, is_admin FROM users WHERE password=%s AND is_admin=1", (password,))
     user = cur.fetchone()
     conn.close()
+    
     if user:
         session['user_id'] = user[0]
         session['is_admin'] = bool(user[1])
         return jsonify({"status": "success"})
-    return jsonify({"status": "fail", "message": "로그인 실패"}), 401
+    return jsonify({"status": "fail", "message": "비밀번호가 일치하지 않습니다."}), 401
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -194,7 +185,6 @@ def download_yt():
             real_name = os.path.basename(f_path).replace(f"{session_id}_", "")
             session['last_vid_title'] = os.path.splitext(real_name)[0]
             
-            # 로그 저장
             add_activity_log('download', f"URL: {url} | File: {real_name}")
 
         progress_store[task_id] = {"percent": 100, "msg": "완료"}
@@ -257,7 +247,6 @@ def convert_srt():
         content = "\n".join(srt_res)
         out_name = (custom_name if custom_name else os.path.splitext(file.filename)[0]) + ".srt"
         
-        # 로그 저장
         add_activity_log('convert', f"Source: {file.filename} -> Result: {out_name}")
         
         return jsonify({"filename": out_name, "content": content, "status": "success"})
@@ -304,7 +293,6 @@ def merge_video():
         
         out_name = os.path.splitext(v_file.filename)[0] + "_sub.mkv"
         
-        # 로그 저장
         add_activity_log('merge', f"Video: {v_file.filename} | Sub: {s_file.filename}")
         
         @after_this_request

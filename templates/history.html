@@ -18,7 +18,7 @@
     </header>
 
     <div class="max-w-4xl mx-auto bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 overflow-hidden">
-        <div class="flex border-b border-gray-700 bg-gray-850">
+        <div class="flex border-b border-gray-700 bg-gray-850 text-xs sm:text-sm">
             <button onclick="changeTab('download')" id="tab-download" class="tab-btn active flex-1 py-4 text-center hover:bg-gray-750">
                 1. 다운로드 기록
             </button>
@@ -33,13 +33,13 @@
         <div class="overflow-x-auto min-h-[400px]">
             <table class="w-full text-left border-collapse">
                 <thead>
-                    <tr class="bg-gray-900 text-gray-400 text-xs uppercase">
-                        <th class="p-4 border-b border-gray-700 w-1/4">일시</th>
-                        <th class="p-4 border-b border-gray-700 w-1/4">IP</th>
-                        <th class="p-4 border-b border-gray-700 w-2/4">상세 내역</th>
+                    <tr class="bg-gray-900 text-gray-400 text-[10px] uppercase">
+                        <th class="p-4 border-b border-gray-700 w-[180px]">일시</th>
+                        <th class="p-4 border-b border-gray-700 w-[120px]">IP</th>
+                        <th class="p-4 border-b border-gray-700">상세 내역</th>
                     </tr>
                 </thead>
-                <tbody id="log-table-body" class="text-sm">
+                <tbody id="log-table-body" class="text-xs sm:text-sm">
                     <tr><td colspan="3" class="p-10 text-center text-gray-500">데이터를 불러오는 중...</td></tr>
                 </tbody>
             </table>
@@ -62,28 +62,23 @@
                 renderLogs();
             } catch (e) {
                 document.getElementById('log-table-body').innerHTML = 
-                    '<tr><td colspan="3" class="p-10 text-center text-red-400">로그를 불러오는데 실패했습니다. 관리자 권한을 확인하세요.</td></tr>';
+                    '<tr><td colspan="3" class="p-10 text-center text-red-400 font-bold">로그를 불러오는데 실패했습니다. (DB 테이블 또는 관리자 권한 확인)</td></tr>';
             }
         }
 
         function changeTab(tabName) {
             currentTab = tabName;
-            
-            // 탭 스타일 변경
             ['download', 'convert', 'merge'].forEach(t => {
                 const btn = document.getElementById(`tab-${t}`);
                 if(t === tabName) btn.classList.add('active');
                 else btn.classList.remove('active');
             });
-
             renderLogs();
         }
 
         function renderLogs() {
             const tbody = document.getElementById('log-table-body');
             tbody.innerHTML = '';
-
-            // 현재 탭에 맞는 데이터만 필터링
             const filtered = allLogs.filter(log => log.action_type === currentTab);
 
             if(filtered.length === 0) {
@@ -94,17 +89,14 @@
             filtered.forEach(log => {
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-gray-750 border-b border-gray-700 transition";
-                
                 tr.innerHTML = `
-                    <td class="p-4 text-gray-400 whitespace-nowrap">${log.created_at}</td>
-                    <td class="p-4 font-mono text-gray-500 text-xs">${log.ip_address}</td>
+                    <td class="p-4 text-gray-400 whitespace-nowrap font-mono">${log.created_at}</td>
+                    <td class="p-4 font-mono text-gray-500">${log.ip_address}</td>
                     <td class="p-4 text-gray-300 break-all">${log.details}</td>
                 `;
                 tbody.appendChild(tr);
             });
         }
-
-        // 초기 로드
         loadLogs();
     </script>
 </body>

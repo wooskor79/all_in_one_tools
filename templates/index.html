@@ -40,7 +40,7 @@
             <div id="content-dl" class="space-y-6">
                 <input type="text" id="yt-url" class="w-full bg-gray-700 border border-gray-600 rounded-xl p-4 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://youtube.com/...">
                 <button onclick="runDownload()" id="btn-dl" class="w-full bg-blue-600 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition">PC로 다운로드</button>
-                <p class="text-sm text-gray-400">※ 유튜브 파일 용량에 따라 다운로드 시간이 소요될 수 있습니다.</p>
+                <p class="text-xs text-gray-400 italic text-center">※ 유튜브 파일 용량에 따라 다소 시간이 소요될 수 있습니다.</p>
                 <div class="hidden bg-gray-700 rounded-full h-2 overflow-hidden" id="prog-box-dl">
                     <div id="prog-bar-dl" class="bg-blue-500 h-full w-0 transition-all duration-300"></div>
                 </div>
@@ -53,7 +53,7 @@
                 </div>
                 <input type="file" id="cv-file" accept=".xlsx" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-gray-700 file:text-blue-400 hover:file:bg-gray-600">
                 <button onclick="checkLastVideo()" id="btn-cv" class="w-full bg-emerald-600 py-4 rounded-xl font-bold text-lg hover:bg-emerald-700 transition">변환 및 다운로드</button>
-                <p class="text-sm text-gray-400">※ Language Reactor에서 다운로드한 xlsx 파일을 선택하세요.</p>
+                <p class="text-xs text-gray-400 italic text-center">※ Language Reactor 설치 후 엑셀(xlsx)로 다운로드하여 변환하세요.</p>
             </div>
 
             <div id="content-mg" class="hidden space-y-6">
@@ -108,8 +108,9 @@
                 `;
             } else {
                 auth.innerHTML = `
-                    <input type="text" id="uid" placeholder="ID" class="bg-gray-700 p-1 rounded text-xs w-20 text-white">
-                    <input type="password" id="upw" placeholder="PW" class="bg-gray-700 p-1 rounded text-xs w-20 text-white" onkeyup="if(event.keyCode==13) login()">
+                    <input type="password" id="upw" placeholder="ADMIN PW" 
+                        class="bg-gray-700 p-1 rounded text-xs w-32 text-white border border-gray-600 focus:outline-none focus:border-blue-500" 
+                        onkeyup="if(event.keyCode==13) login()">
                     <button onclick="login()" class="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-blue-700 ml-1">로그인</button>
                 `;
             }
@@ -243,11 +244,11 @@
         }
 
         async function login() {
-            const u = document.getElementById('uid').value;
             const p = document.getElementById('upw').value;
+            if(!p) return alert("비밀번호를 입력하세요.");
             const res = await fetch('/api/login', {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({username:u, password:p})
+                body: JSON.stringify({password:p})
             });
             const d = await res.json();
             if(d.status==='success') refreshStatus();

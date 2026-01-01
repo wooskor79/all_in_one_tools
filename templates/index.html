@@ -8,14 +8,13 @@
     <style>
         .tab-btn.active { border-bottom: 3px solid #3b82f6; color: #3b82f6; font-weight: bold; }
         .log-line { font-family: 'Courier New', monospace; border-bottom: 1px solid #1f2937; padding: 4px; }
-        /* 팝업 애니메이션 */
         .modal { transition: opacity 0.25s ease; }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans min-h-screen p-4">
 
     <header class="max-w-4xl mx-auto flex justify-between items-center mb-8 p-4 bg-gray-800 rounded-2xl shadow-lg">
-        <h1 class="text-2xl font-black text-blue-400 italic">WEB TOOLS</h1>
+        <h1 class="text-2xl font-black text-blue-400 italic cursor-pointer" onclick="location.href='/'">WEB TOOLS</h1>
         <div class="flex gap-2 items-center" id="auth-area">
             </div>
     </header>
@@ -41,7 +40,7 @@
             <div id="content-dl" class="space-y-6">
                 <input type="text" id="yt-url" class="w-full bg-gray-700 border border-gray-600 rounded-xl p-4 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://youtube.com/...">
                 <button onclick="runDownload()" id="btn-dl" class="w-full bg-blue-600 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition">PC로 다운로드</button>
-                <p>유튜브파일 용량에 따라 다룬로드는 시간이 걸립니다</p>
+                <p class="text-sm text-gray-400">※ 유튜브 파일 용량에 따라 다운로드 시간이 소요될 수 있습니다.</p>
                 <div class="hidden bg-gray-700 rounded-full h-2 overflow-hidden" id="prog-box-dl">
                     <div id="prog-bar-dl" class="bg-blue-500 h-full w-0 transition-all duration-300"></div>
                 </div>
@@ -54,7 +53,7 @@
                 </div>
                 <input type="file" id="cv-file" accept=".xlsx" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-gray-700 file:text-blue-400 hover:file:bg-gray-600">
                 <button onclick="checkLastVideo()" id="btn-cv" class="w-full bg-emerald-600 py-4 rounded-xl font-bold text-lg hover:bg-emerald-700 transition">변환 및 다운로드</button>
-                <p>자막은 크롬 확장 Language Reactor 설치후에 xlsx 로 다운받으면됩니다</p>
+                <p class="text-sm text-gray-400">※ Language Reactor에서 다운로드한 xlsx 파일을 선택하세요.</p>
             </div>
 
             <div id="content-mg" class="hidden space-y-6">
@@ -92,49 +91,41 @@
             const res = await fetch('/api/status');
             const d = await res.json();
             
-            // 1. 카운터 업데이트
-            const txt = d.is_admin ? "무제한" : (c) => `남은 횟수: ${c}/50`;
+            const txt = (c) => `남은 횟수: ${c}/50`;
             document.getElementById('cnt-dl').innerText = d.is_admin ? "무제한" : txt(d.dl);
             document.getElementById('cnt-cv').innerText = d.is_admin ? "무제한" : txt(d.cv);
             document.getElementById('cnt-mg').innerText = d.is_admin ? "무제한" : txt(d.mg);
             
-            // 2. 최근 영상 제목 저장
             lastTitle = d.last_title;
 
-            // 3. 로그인 UI 업데이트
             const auth = document.getElementById('auth-area');
             if(d.is_admin) {
                 auth.innerHTML = `
                     <span class="text-emerald-400 font-bold text-sm mr-2">👑 관리자</span>
+                    <button onclick="location.href='/history'" class="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 mr-1">로그 보기</button>
                     <button onclick="resetCounts()" class="bg-yellow-600 text-white px-3 py-1 rounded text-xs hover:bg-yellow-700 mr-1">횟수 초기화</button>
                     <button onclick="logout()" class="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700">로그아웃</button>
                 `;
             } else {
                 auth.innerHTML = `
                     <input type="text" id="uid" placeholder="ID" class="bg-gray-700 p-1 rounded text-xs w-20 text-white">
-                    <input type="password" id="upw" placeholder="PW" class="bg-gray-700 p-1 rounded text-xs w-20 text-white">
+                    <input type="password" id="upw" placeholder="PW" class="bg-gray-700 p-1 rounded text-xs w-20 text-white" onkeyup="if(event.keyCode==13) login()">
                     <button onclick="login()" class="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-blue-700 ml-1">로그인</button>
                 `;
             }
         }
 
-        // --- 기능 로직 ---
-        
         async function runDownload() {
             const url = document.getElementById('yt-url').value;
             if(!url) return alert("URL 입력 필요");
-            
             toggleBtn('dl', true);
             const taskId = Math.random().toString(36).substr(2,9);
             const es = createProgress(taskId, 'dl');
-            
             const fd = new FormData(); fd.append('url', url); fd.append('task_id', taskId);
-            
             try {
                 const res = await fetch('/download_yt', {method:'POST', body:fd});
                 if(res.ok) {
                     const blob = await res.blob();
-                    // 헤더에서 파일명 추출 시도, 실패 시 기본값
                     let filename = "video.mp4";
                     const disp = res.headers.get('Content-Disposition');
                     if (disp && disp.includes('filename=')) {
@@ -142,7 +133,7 @@
                     }
                     downloadBlob(blob, decodeURIComponent(filename));
                     log("다운로드 완료", "success");
-                    refreshStatus(); // 횟수 차감 갱신
+                    refreshStatus();
                 } else {
                     const e = await res.json();
                     log("오류: " + e.error, "error");
@@ -152,24 +143,18 @@
             finally { es.close(); toggleBtn('dl', false); }
         }
 
-        // 변환 버튼 클릭 시 -> 팝업 띄우기 판단
         function checkLastVideo() {
             const file = document.getElementById('cv-file').files[0];
             if(!file) return alert("파일을 선택하세요");
-
             if(lastTitle) {
                 document.getElementById('modal-title').innerText = lastTitle;
                 document.getElementById('modal-wrap').classList.remove('hidden');
-            } else {
-                confirmConvert(false); // 최근 기록 없으면 바로 진행
-            }
+            } else confirmConvert(false);
         }
 
-        // 실제 변환 요청
         async function confirmConvert(useLastTitle) {
             document.getElementById('modal-wrap').classList.add('hidden');
             const file = document.getElementById('cv-file').files[0];
-            
             const fd = new FormData();
             fd.append('file', file);
             fd.append('platform', document.getElementById('cv-plat').value);
@@ -196,14 +181,11 @@
             const v = document.getElementById('mg-vid').files[0];
             const s = document.getElementById('mg-sub').files[0];
             if(!v || !s) return alert("파일 모두 선택 필요");
-
             toggleBtn('mg', true);
             const taskId = Math.random().toString(36).substr(2,9);
             const es = createProgress(taskId, 'mg');
-            
             const fd = new FormData();
             fd.append('video', v); fd.append('subtitle', s); fd.append('task_id', taskId);
-
             try {
                 const res = await fetch('/merge_video', {method:'POST', body:fd});
                 if(res.ok) {
@@ -220,7 +202,6 @@
             finally { es.close(); toggleBtn('mg', false); }
         }
 
-        // --- 유틸 ---
         function createProgress(tid, type) {
             const bar = document.getElementById(`prog-bar-${type}`);
             document.getElementById(`prog-box-${type}`).classList.remove('hidden');
@@ -261,7 +242,6 @@
             document.getElementById('tab-'+id).classList.add('active');
         }
 
-        // --- 관리자/로그인 ---
         async function login() {
             const u = document.getElementById('uid').value;
             const p = document.getElementById('upw').value;
@@ -276,7 +256,7 @@
 
         async function logout() {
             await fetch('/api/logout', {method:'POST'});
-            refreshStatus();
+            location.reload();
         }
 
         async function resetCounts() {

@@ -25,19 +25,9 @@ progress_store = {}
 def get_db_conn():
     return pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, db=DB_NAME, charset='utf8mb4', autocommit=True)
 
-# [수정됨] 실제 IP를 가져오는 함수 추가
-def get_client_ip():
-    """
-    헤더(X-Forwarded-For)를 확인하여 실제 클라이언트 IP를 반환합니다.
-    헤더가 없으면 기존 방식(remote_addr)을 사용합니다.
-    """
-    if request.headers.getlist("X-Forwarded-For"):
-        return request.headers.getlist("X-Forwarded-For")[0]
-    return request.remote_addr
-
 def add_activity_log(action_type, details):
     """상세 활동 로그를 DB에 저장합니다."""
-    ip = get_client_ip() # [수정됨] 함수 적용
+    ip = request.remote_addr
     try:
         conn = get_db_conn()
         cur = conn.cursor()
@@ -63,7 +53,7 @@ def get_remain_count(ip, action_type):
 
 def check_limit(action_type):
     if session.get('is_admin'): return True
-    ip = get_client_ip() # [수정됨] 함수 적용
+    ip = request.remote_addr
     remain = get_remain_count(ip, action_type)
     if remain <= 0: return False
     
@@ -98,7 +88,7 @@ def history_page():
 
 @app.route('/api/status')
 def api_status():
-    ip = get_client_ip() # [수정됨] 함수 적용
+    ip = request.remote_addr
     return jsonify({
         "dl": get_remain_count(ip, 'download'),
         "cv": get_remain_count(ip, 'convert'),

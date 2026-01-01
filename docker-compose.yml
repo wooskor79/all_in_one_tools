@@ -5,7 +5,7 @@ services:
     container_name: all_in_one_tool
     build: .
     ports:
-      - "9090:5000"  # 포트 변경됨
+      - "9090:5000"
     depends_on:
       - db
     environment:
@@ -24,11 +24,25 @@ services:
       MYSQL_ROOT_PASSWORD: dldntjd@D79
       MYSQL_DATABASE: tool_db
     ports:
-      - "9911:3306"
+      - "9911:3306" # 외부 DB 관리 도구(HeidiSQL 등)용 포트
     volumes:
       - db_data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     restart: unless-stopped
+
+  # phpMyAdmin 서비스 추가
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: tool_pma
+    restart: always
+    depends_on:
+      - db
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_ARBITRARY: 1
+    ports:
+      - "9912:80" # 웹 브라우저에서 접속할 포트 (원하시는 포트로 변경 가능)
 
 volumes:
   db_data:

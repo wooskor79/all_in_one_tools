@@ -48,8 +48,15 @@
 
             <div id="content-cv" class="hidden space-y-6">
                 <div class="grid grid-cols-2 gap-4">
-                    <select id="cv-plat" class="w-full bg-gray-700 p-3 rounded-lg"><option value="youtube">유튜브</option><option value="netflix">넷플릭스</option></select>
-                    <select id="cv-type" class="w-full bg-gray-700 p-3 rounded-lg"><option value="dual">이중 자막</option><option value="translation">번역만</option></select>
+                    <select id="cv-plat" class="w-full bg-gray-700 p-3 rounded-lg">
+                        <option value="youtube">유튜브</option>
+                        <option value="netflix">넷플릭스</option>
+                    </select>
+                    <select id="cv-type" class="w-full bg-gray-700 p-3 rounded-lg">
+                        <option value="translation" selected>번역만</option>
+                        <option value="dual">이중 자막</option>
+                        <option value="original">원어만</option>
+                    </select>
                 </div>
                 <input type="file" id="cv-file" accept=".xlsx" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-gray-700 file:text-blue-400 hover:file:bg-gray-600">
                 <button onclick="checkLastVideo()" id="btn-cv" class="w-full bg-emerald-600 py-4 rounded-xl font-bold text-lg hover:bg-emerald-700 transition">변환 및 다운로드</button>

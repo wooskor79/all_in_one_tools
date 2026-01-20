@@ -34,6 +34,10 @@
                 3. 자막 합치기
                 <div class="text-[10px] text-orange-400 font-normal mt-1" id="cnt-mg">남은 횟수: -</div>
             </button>
+            <button onclick="showTab('ic')" class="tab-btn flex-1 py-4 text-center hover:bg-gray-750 transition" id="tab-ic">
+                4. 통합 자막 변환기
+                <div class="text-[10px] text-orange-400 font-normal mt-1" id="cnt-ic">남은 횟수: -</div>
+            </button>
         </div>
 
         <div class="p-8 min-h-[400px]">
@@ -71,6 +75,14 @@
                     <div id="prog-bar-mg" class="bg-indigo-500 h-full w-0 transition-all duration-300"></div>
                 </div>
             </div>
+
+            <div id="content-ic" class="hidden space-y-6">
+                <div class="p-4 bg-gray-700 rounded-xl border border-dashed border-gray-500 text-center">
+                    <p class="text-gray-300 font-bold">통합 자막 변환기 준비 중</p>
+                    <p class="text-xs text-gray-400 mt-2">다양한 자막 포맷(VTT, ASS 등)을 SRT로 통합 변환하는 기능이 곧 추가됩니다.</p>
+                </div>
+                <button disabled class="w-full bg-gray-600 py-4 rounded-xl font-bold text-lg cursor-not-allowed">준비 중...</button>
+            </div>
         </div>
         
         <div class="bg-black p-4 h-48 overflow-y-auto text-xs border-t border-gray-700" id="log-area">
@@ -102,6 +114,8 @@
             document.getElementById('cnt-dl').innerText = d.is_admin ? "무제한" : txt(d.dl);
             document.getElementById('cnt-cv').innerText = d.is_admin ? "무제한" : txt(d.cv);
             document.getElementById('cnt-mg').innerText = d.is_admin ? "무제한" : txt(d.mg);
+            // 신규 탭 횟수 표시 (데이터가 없을 경우 대비)
+            document.getElementById('cnt-ic').innerText = d.is_admin ? "무제한" : (d.ic ? txt(d.ic) : "기능 대기");
             
             lastTitle = d.last_title;
 
@@ -242,12 +256,17 @@
         }
 
         function showTab(id) {
-            ['dl','cv','mg'].forEach(t => {
-                document.getElementById('content-'+t).classList.add('hidden');
-                document.getElementById('tab-'+t).classList.remove('active');
+            // ic를 포함한 모든 탭 리스트 순회하여 제어
+            ['dl','cv','mg','ic'].forEach(t => {
+                const content = document.getElementById('content-'+t);
+                const tab = document.getElementById('tab-'+t);
+                if(content) content.classList.add('hidden');
+                if(tab) tab.classList.remove('active');
             });
-            document.getElementById('content-'+id).classList.remove('hidden');
-            document.getElementById('tab-'+id).classList.add('active');
+            const targetContent = document.getElementById('content-'+id);
+            const targetTab = document.getElementById('tab-'+id);
+            if(targetContent) targetContent.classList.remove('hidden');
+            if(targetTab) targetTab.classList.add('active');
         }
 
         async function login() {

@@ -39,8 +39,12 @@
                     <select id="cv-plat" class="w-full bg-gray-700 p-3 rounded-lg"><option value="youtube">유튜브</option><option value="netflix">넷플릭스</option></select>
                     <select id="cv-type" class="w-full bg-gray-700 p-3 rounded-lg"><option value="translation" selected>번역만</option><option value="dual">이중 자막</option><option value="original">원어만</option></select>
                 </div>
-                <input type="file" id="cv-file" accept=".xlsx" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-gray-700 file:text-blue-400">
-                <button onclick="checkLastVideo()" id="btn-cv" class="w-full bg-emerald-600 py-4 rounded-xl font-bold">변환 및 다운로드</button>
+                <div class="drop-zone rounded-2xl p-8 text-center cursor-pointer" id="cv-drop-zone">
+                    <p class="text-gray-400 text-sm">xlsx 파일을 드래그하거나 클릭하여 추가하세요.</p>
+                    <input type="file" id="cv-file-input" multiple class="hidden" accept=".xlsx">
+                </div>
+                <div id="cv-file-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+                <button onclick="runConvertAll()" id="btn-cv" class="w-full bg-emerald-600 py-4 rounded-xl font-bold">변환 및 ZIP 다운로드</button>
             </div>
 
             <div id="content-mg" class="hidden space-y-6">
@@ -76,9 +80,11 @@
     </div>
 
     <script>
-        let lastTitle = null; let icFiles = [];
+        let lastTitle = null; let icFiles = []; let cvFiles = [];
         const dz = document.getElementById('ic-drop-zone');
         const fi = document.getElementById('ic-file-input');
+        const dzCv = document.getElementById('cv-drop-zone');
+        const fiCv = document.getElementById('cv-file-input');
 
         dz.onclick = () => fi.click();
         fi.onchange = (e) => addIcFiles(e.target.files);
@@ -86,9 +92,20 @@
         dz.ondragleave = () => dz.classList.remove('active');
         dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('active'); addIcFiles(e.dataTransfer.files); };
 
+        dzCv.onclick = () => fiCv.click();
+        fiCv.onchange = (e) => addCvFiles(e.target.files);
+        dzCv.ondragover = (e) => { e.preventDefault(); dzCv.classList.add('active'); };
+        dzCv.ondragleave = () => dzCv.classList.remove('active');
+        dzCv.ondrop = (e) => { e.preventDefault(); dzCv.classList.remove('active'); addCvFiles(e.dataTransfer.files); };
+
         function addIcFiles(files) {
             Array.from(files).forEach(f => { if(!icFiles.find(x => x.name === f.name)) icFiles.push(f); });
             renderIcFiles();
+        }
+
+        function addCvFiles(files) {
+            Array.from(files).forEach(f => { if(!cvFiles.find(x => x.name === f.name)) cvFiles.push(f); });
+            renderCvFiles();
         }
 
         function renderIcFiles() {
@@ -99,7 +116,40 @@
                     <button onclick="removeIcFile(${i})" class="text-red-400 text-xs px-2">✕</button>
                 </div>`).join('');
         }
+
+        function renderCvFiles() {
+            const list = document.getElementById('cv-file-list');
+            list.innerHTML = cvFiles.map((f, i) => `
+                <div class="flex justify-between items-center bg-gray-750 p-3 rounded-lg border border-gray-700">
+                    <span class="text-xs truncate">${f.name}</span>
+                    <button onclick="removeCvFile(${i})" class="text-red-400 text-xs px-2">✕</button>
+                </div>`).join('');
+        }
+
         function removeIcFile(i) { icFiles.splice(i, 1); renderIcFiles(); }
+        function removeCvFile(i) { cvFiles.splice(i, 1); renderCvFiles(); }
+
+        async function runConvertAll() {
+            if(cvFiles.length === 0) return alert("파일을 선택하세요.");
+            const fd = new FormData(); 
+            cvFiles.forEach(f => fd.append('files[]', f));
+            fd.append('sub_type', document.getElementById('cv-type').value);
+            fd.append('plat', document.getElementById('cv-plat').value);
+            
+            log(`SRT 변환 요청 (${cvFiles.length}개)...`, "info");
+            try {
+                const res = await fetch('/convert_srt_multi', {method:'POST', body:fd});
+                if(res.ok) {
+                    const blob = await res.blob();
+                    downloadBlob(blob, "converted_srt.zip");
+                    log("모든 파일 SRT 변환 및 압축 완료", "success");
+                    cvFiles = []; renderCvFiles(); refreshStatus();
+                } else {
+                    const d = await res.json();
+                    log("오류: " + (d.error || "변환 실패"), "error");
+                }
+            } catch(e) { log("통신 오류", "error"); }
+        }
 
         async function runIntegratedConvert() {
             if(icFiles.length === 0) return alert("파일을 선택하세요.");

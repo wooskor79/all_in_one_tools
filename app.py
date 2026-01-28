@@ -7,6 +7,8 @@ import pymysql
 import pandas as pd
 import ffmpeg
 import yt_dlp
+import zipfile
+import io
 from flask import Flask, render_template, request, jsonify, send_file, after_this_request, Response, session
 
 app = Flask(__name__)
@@ -217,6 +219,52 @@ def convert_srt():
         add_activity_log('convert', f"Source: {file.filename} -> Result: {out_name}")
         return jsonify({"filename": out_name, "content": content, "status": "success"})
     except Exception as e: return jsonify({"error": str(e), "status": "fail"}), 500
+
+@app.route('/convert_srt_multi', methods=['POST'])
+def convert_srt_multi():
+    if not check_limit('convert'): return jsonify({"error": "일일 제한 초과"}), 429
+    files = request.files.getlist('files[]')
+    sub_type = request.form.get('sub_type', 'dual')
+    if not files: return jsonify({"error": "파일 없음"}), 400
+    
+    zip_buffer = io.BytesIO()
+    try:
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            for file in files:
+                df = pd.read_excel(file, engine='openpyxl')
+                time_col = next((c for c in df.columns if 'Time' in str(c) or 'Start' in str(c)), "Time")
+                orig_col = next((c for c in df.columns if 'Subtitle' in str(c) or 'Original' in str(c)), "")
+                trans_col = next((c for c in df.columns if 'Translation' in str(c) or '한국어' in str(c)), "")
+                
+                def parse_time(t):
+                    t = str(t).strip()
+                    if 's' in t: return float(t.replace('s',''))
+                    parts = t.split(':')
+                    if len(parts)==3: return int(parts[0])*3600 + int(parts[1])*60 + float(parts[2])
+                    if len(parts)==2: return int(parts[0])*60 + float(parts[1])
+                    return 0.0
+                
+                def to_srt_t(s):
+                    h, r = divmod(s, 3600); m, s = divmod(r, 60); ms = int((s - int(s)) * 1000)
+                    return f"{int(h):02d}:{int(m):02d}:{int(s):02d},{ms:03d}"
+                
+                df['sec'] = df[time_col].apply(parse_time)
+                df['end_sec'] = df['sec'].shift(-1).fillna(df['sec'] + 3.0)
+                srt_res = []
+                for i, row in df.iterrows():
+                    o = str(row.get(orig_col,'')).strip(); t = str(row.get(trans_col,'')).strip()
+                    txt = f"{o}\n{t}" if sub_type=='dual' and o and t else (t if sub_type=='translation' else o)
+                    srt_res.append(f"{i+1}\n{to_srt_t(row['sec'])} --> {to_srt_t(row['end_sec'])}\n{txt}\n")
+                
+                content = "\n".join(srt_res)
+                out_name = os.path.splitext(file.filename)[0] + ".srt"
+                zip_file.writestr(out_name, content)
+                add_activity_log('convert', f"Source: {file.filename} (Multi) -> Result: {out_name}")
+        
+        zip_buffer.seek(0)
+        return send_file(zip_buffer, as_attachment=True, download_name="converted_srt.zip", mimetype='application/zip')
+    except Exception as e:
+        return jsonify({"error": str(e), "status": "fail"}), 500
 
 @app.route('/convert_srt_integrated', methods=['POST'])
 def convert_srt_integrated():

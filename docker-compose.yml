@@ -30,6 +30,16 @@ services:
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     restart: unless-stopped
 
+  redis:
+    image: redis:alpine
+    container_name: tools_redis
+    ports:
+      - "6379:6379" # 외부 DB 관리 도구(HeidiSQL 등)용 포트
+    volumes:
+      - db_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: unless-stopped
+
   # phpMyAdmin 서비스 추가
   phpmyadmin:
     image: phpmyadmin:latest

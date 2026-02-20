@@ -8,10 +8,12 @@ import pandas as pd
 import ffmpeg
 import yt_dlp
 import zipfile
-import io
+import re
+import redis
+import json
+import threading
 from flask import Flask, render_template, request, jsonify, send_file, after_this_request, Response, session
-
-app = Flask(__name__)
+from dbutils.pooled_db import PooledDB
 app.secret_key = 'super_secret_key_wooskor'
 
 # 환경 변수 설정
@@ -22,10 +24,24 @@ DB_NAME = os.environ.get('DB_NAME', 'tool_db')
 TEMP_DIR = "/app/temp"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-progress_store = {}
+db_pool = PooledDB(
+    creator=pymysql,
+    host=DB_HOST, user=DB_USER, password=DB_PASSWORD, db=DB_NAME, 
+    charset='utf8mb4', autocommit=True,
+    maxconnections=10, mincached=2, maxcached=5
+)
+
+redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+
+def set_progress(task_id, percent, msg):
+    redis_client.set(f"prog_{task_id}", json.dumps({"percent": percent, "msg": msg}), ex=3600)
+
+def get_progress(task_id):
+    data = redis_client.get(f"prog_{task_id}")
+    return json.loads(data) if data else {"percent": 0, "msg": "대기"}
 
 def get_db_conn():
-    return pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, db=DB_NAME, charset='utf8mb4', autocommit=True)
+    return db_pool.connection()
 
 def add_activity_log(action_type, details):
     """상세 활동 로그를 DB에 저장합니다."""
@@ -143,7 +159,7 @@ def reset_counts():
 def progress(task_id):
     def generate():
         while True:
-            prog = progress_store.get(task_id, {"percent": 0, "msg": "대기"})
+            prog = get_progress(task_id)
             yield f"data: {prog['percent']}|{prog['msg']}\n\n"
             if prog['percent'] >= 100 or "오류" in prog['msg']: break
             time.sleep(0.5)
@@ -159,7 +175,7 @@ def download_yt():
             p = d.get('_percent_str', '0%').replace('%','')
             try: p = float(p)
             except: p = 0
-            progress_store[task_id] = {"percent": p, "msg": "다운로드 중..."}
+            set_progress(task_id, p, "다운로드 중...")
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': f'{TEMP_DIR}/{session_id}_%(title)s.%(ext)s',
@@ -176,7 +192,7 @@ def download_yt():
             real_name = os.path.basename(f_path).replace(f"{session_id}_", "")
             session['last_vid_title'] = os.path.splitext(real_name)[0]
             add_activity_log('download', f"URL: {url} | File: {real_name}")
-        progress_store[task_id] = {"percent": 100, "msg": "완료"}
+        set_progress(task_id, 100, "완료")
         @after_this_request
         def cleanup(res):
             try:
@@ -185,7 +201,7 @@ def download_yt():
             return res
         return send_file(f_path, as_attachment=True, download_name=real_name)
     except Exception as e:
-        progress_store[task_id] = {"percent": 0, "msg": f"오류: {str(e)}"}
+        set_progress(task_id, 0, f"오류: {str(e)}")
         return jsonify({"error": "다운로드 실패"}), 500
 
 @app.route('/convert_srt', methods=['POST'])
@@ -274,22 +290,82 @@ def convert_srt_integrated():
     if not files: return jsonify({"error": "파일 없음"}), 400
     
     results = []
-    # SMI/ASS -> SRT 변환 로직 (TextConverter.php 핵심 로직 파이썬 이식)
+    # SMI/ASS -> SRT 변환 핵심 로직 파이썬 이식
     for f in files:
         ext = os.path.splitext(f.filename)[1].lower()
-        content = ""
+        if ext not in ['.smi', '.ass']:
+            continue
+            
         try:
             raw = f.read()
-            # 인코딩 자동 감지 시도 (EUC-KR/UTF-8)
             try: text = raw.decode('utf-8')
             except: text = raw.decode('cp949', errors='ignore')
             
-            # .idx/.sub는 외부 ffmpeg 처리가 필요할 수 있으나 여기서는 텍스트 기반 변환 위주
-            # 실제 변환 처리 (정규 표현식 등을 이용한 간단 구현)
-            content = text # (실제 구현 시 각 확장자별 파서 적용)
+            srt_content = ""
+            if ext == '.smi':
+                # SMI to SRT 심플 파서
+                sync_pattern = re.compile(r'<SYNC Start=([0-9]+)(?:[^>]+)?>', re.IGNORECASE)
+                text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
+                text = re.sub(r'<P Class=[^>]+>', '', text, flags=re.IGNORECASE)
+                lines = text.split('\n')
+                
+                blocks = []
+                current_time = None
+                current_text = []
+                
+                for line in lines:
+                    match = sync_pattern.search(line)
+                    if match:
+                        if current_time is not None and current_text:
+                            # 텍스트 태그 정리
+                            clean_text = ' '.join(current_text)
+                            clean_text = re.sub(r'<br\s*?/?>', '\n', clean_text, flags=re.IGNORECASE)
+                            clean_text = re.sub(r'<[^>]+>', '', clean_text)
+                            if clean_text.strip() and clean_text.strip() != '&nbsp;':
+                                blocks.append({"start": current_time, "text": clean_text.strip()})
+                        current_time = int(match.group(1))
+                        current_text = [line[match.end():].strip()]
+                    elif current_time is not None:
+                        current_text.append(line.strip())
+                
+                # 블록들을 SRT 포맷으로
+                def ms_to_srt(ms):
+                    s, ms = divmod(ms, 1000)
+                    m, s = divmod(s, 60)
+                    h, m = divmod(m, 60)
+                    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+                
+                for i in range(len(blocks)):
+                    start = blocks[i]['start']
+                    end = blocks[i+1]['start'] if i + 1 < len(blocks) else start + 3000
+                    srt_content += f"{i+1}\n{ms_to_srt(start)} --> {ms_to_srt(end)}\n{blocks[i]['text']}\n\n"
+                    
+            elif ext == '.ass':
+                # ASS to SRT 파서 (Dialogue 라인 추출)
+                lines = text.split('\n')
+                dialogue_pattern = re.compile(r'^Dialogue:\s*[^,]+,([^,]+),([^,]+),[^,]+,[^,]+,[^,]+,[^,]+,[^,]+,[^,]+,(.*)$')
+                
+                def asstime_to_srt(t_str):
+                    parts = t_str.split('.')
+                    ms = int(parts[1][:2] + "0") if len(parts) > 1 else 0
+                    hms = parts[0].split(':')
+                    return f"{int(hms[0]):02d}:{int(hms[1]):02d}:{int(hms[2]):02d},{ms:03d}"
+                
+                count = 1
+                for line in lines:
+                    match = dialogue_pattern.match(line.strip())
+                    if match:
+                        start = asstime_to_srt(match.group(1).strip())
+                        end = asstime_to_srt(match.group(2).strip())
+                        raw_text = match.group(3).strip()
+                        # 각종 태그 제거 {\pos} 등, \N은 줄바꿈으로
+                        clean_text = re.sub(r'\{[^\}]+\}', '', raw_text)
+                        clean_text = clean_text.replace(r'\N', '\n').replace(r'\n', '\n')
+                        srt_content += f"{count}\n{start} --> {end}\n{clean_text}\n\n"
+                        count += 1
             
             out_name = os.path.splitext(f.filename)[0] + ".srt"
-            results.append({"filename": out_name, "content": content})
+            results.append({"filename": out_name, "content": srt_content})
         except Exception as e:
             continue
             
@@ -315,8 +391,8 @@ def merge_video():
             if not line: break
             if "out_time_ms" in line:
                 ms = int(line.split('=')[1]); p = min(99, int((ms/1000000)/dur*100))
-                progress_store[task_id] = {"percent": p, "msg": "합치는 중..."}
-        process.wait(); progress_store[task_id] = {"percent": 100, "msg": "완료"}
+                set_progress(task_id, p, "합치는 중...")
+        process.wait(); set_progress(task_id, 100, "완료")
         out_name = os.path.splitext(v_file.filename)[0] + "_sub.mkv"
         add_activity_log('merge', f"Video: {v_file.filename}")
         @after_this_request
@@ -326,7 +402,7 @@ def merge_video():
             return r
         return send_file(out_path, as_attachment=True, download_name=out_name)
     except Exception as e:
-        progress_store[task_id] = {"percent": 0, "msg": "실패"}
+        set_progress(task_id, 0, "실패")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

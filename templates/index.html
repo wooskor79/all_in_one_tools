@@ -10,6 +10,22 @@
         .log-line { font-family: 'Courier New', monospace; border-bottom: 1px solid #1f2937; padding: 4px; }
         .drop-zone { border: 2px dashed #4b5563; transition: all 0.3s; }
         .drop-zone.active { border-color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); }
+        
+        /* Toast Notification Styles */
+        .toast {
+            visibility: hidden; min-width: 250px; margin-left: -125px;
+            background-color: #1f2937; color: #fff; text-align: center;
+            border-radius: 8px; padding: 16px; position: fixed;
+            z-index: 1000; left: 50%; bottom: 30px; font-size: 14px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.3); border: 1px solid #374151;
+        }
+        .toast.show {
+            visibility: visible;
+            -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s;
+            animation: fadein 0.5s, fadeout 0.5s 2.5s;
+        }
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-200 font-sans min-h-screen p-4">
@@ -78,6 +94,9 @@
         
         <div class="bg-black p-4 h-48 overflow-y-auto text-xs border-t border-gray-700" id="log-area"></div>
     </div>
+    
+    <!-- Toast Container -->
+    <div id="toast" class="toast"></div>
 
     <script>
         let lastTitle = null; let icFiles = []; let cvFiles = [];
@@ -111,26 +130,34 @@
         function renderIcFiles() {
             const list = document.getElementById('ic-file-list');
             list.innerHTML = icFiles.map((f, i) => `
-                <div class="flex justify-between items-center bg-gray-750 p-3 rounded-lg border border-gray-700">
-                    <span class="text-xs truncate">${f.name}</span>
-                    <button onclick="removeIcFile(${i})" class="text-red-400 text-xs px-2">✕</button>
+                <div class="flex justify-between items-center bg-gray-750 p-4 mb-2 rounded-lg border border-gray-700 text-sm">
+                    <span class="truncate">${f.name}</span>
+                    <button onclick="removeIcFile(${i})" class="text-red-400 font-bold px-3 py-1 hover:bg-gray-600 rounded">✕</button>
                 </div>`).join('');
         }
 
         function renderCvFiles() {
             const list = document.getElementById('cv-file-list');
             list.innerHTML = cvFiles.map((f, i) => `
-                <div class="flex justify-between items-center bg-gray-750 p-3 rounded-lg border border-gray-700">
-                    <span class="text-xs truncate">${f.name}</span>
-                    <button onclick="removeCvFile(${i})" class="text-red-400 text-xs px-2">✕</button>
+                <div class="flex justify-between items-center bg-gray-750 p-4 mb-2 rounded-lg border border-gray-700 text-sm">
+                    <span class="truncate">${f.name}</span>
+                    <button onclick="removeCvFile(${i})" class="text-red-400 font-bold px-3 py-1 hover:bg-gray-600 rounded">✕</button>
                 </div>`).join('');
         }
 
         function removeIcFile(i) { icFiles.splice(i, 1); renderIcFiles(); }
         function removeCvFile(i) { cvFiles.splice(i, 1); renderCvFiles(); }
+        
+        // Custom Toast Function
+        function showToast(msg) {
+            const x = document.getElementById("toast");
+            x.innerText = msg;
+            x.className = "toast show";
+            setTimeout(() => { x.className = x.className.replace("show", ""); }, 3000);
+        }
 
         async function runConvertAll() {
-            if(cvFiles.length === 0) return alert("파일을 선택하세요.");
+            if(cvFiles.length === 0) return showToast("파일을 선택하세요.");
             const fd = new FormData(); 
             cvFiles.forEach(f => fd.append('files[]', f));
             fd.append('sub_type', document.getElementById('cv-type').value);
@@ -152,7 +179,7 @@
         }
 
         async function runIntegratedConvert() {
-            if(icFiles.length === 0) return alert("파일을 선택하세요.");
+            if(icFiles.length === 0) return showToast("파일을 선택하세요.");
             const fd = new FormData(); icFiles.forEach(f => fd.append('files[]', f));
             log(`통합 변환 요청 (${icFiles.length}개)...`, "info");
             try {
@@ -183,19 +210,19 @@
 
         // 기존 기능 유지용 함수들
         async function runDownload() {
-            const url = document.getElementById('yt-url').value; if(!url) return alert("URL 필요");
+            const url = document.getElementById('yt-url').value; if(!url) return showToast("URL이 필요합니다.");
             toggleBtn('dl', true); const tid = Math.random().toString(36).substr(2,9); const es = createProgress(tid, 'dl');
             const fd = new FormData(); fd.append('url', url); fd.append('task_id', tid);
             try { const res = await fetch('/download_yt', {method:'POST', body:fd}); if(res.ok) { downloadBlob(await res.blob(), "video.mp4"); log("다운로드 완료", "success"); refreshStatus(); } } finally { es.close(); toggleBtn('dl', false); }
         }
-        function checkLastVideo() { const f = document.getElementById('cv-file').files[0]; if(!f) return alert("파일 선택"); if(lastTitle) { document.getElementById('modal-title').innerText = lastTitle; document.getElementById('modal-wrap').classList.remove('hidden'); } else confirmConvert(false); }
+        function checkLastVideo() { const f = document.getElementById('cv-file').files[0]; if(!f) return showToast("파일을 선택하세요."); if(lastTitle) { document.getElementById('modal-title').innerText = lastTitle; document.getElementById('modal-wrap').classList.remove('hidden'); } else confirmConvert(false); }
         async function confirmConvert(u) {
             document.getElementById('modal-wrap').classList.add('hidden'); const f = document.getElementById('cv-file').files[0];
             const fd = new FormData(); fd.append('file', f); fd.append('sub_type', document.getElementById('cv-type').value); if(u) fd.append('custom_name', lastTitle);
             try { const res = await fetch('/convert_srt', {method:'POST', body:fd}); const d = await res.json(); if(d.status === 'success') { downloadBlob(new Blob([d.content]), d.filename); log("변환 완료", "success"); refreshStatus(); } } catch(e) { log("오류", "error"); }
         }
         async function runMerge() {
-            const v = document.getElementById('mg-vid').files[0]; const s = document.getElementById('mg-sub').files[0]; if(!v || !s) return alert("파일 필요");
+            const v = document.getElementById('mg-vid').files[0]; const s = document.getElementById('mg-sub').files[0]; if(!v || !s) return showToast("영상과 자막 파일 모두 필요합니다.");
             toggleBtn('mg', true); const tid = Math.random().toString(36).substr(2,9); const es = createProgress(tid, 'mg');
             const fd = new FormData(); fd.append('video', v); fd.append('subtitle', s); fd.append('task_id', tid);
             try { const res = await fetch('/merge_video', {method:'POST', body:fd}); if(res.ok) { downloadBlob(await res.blob(), "merged.mkv"); log("합치기 완료", "success"); refreshStatus(); } } finally { es.close(); toggleBtn('mg', false); }

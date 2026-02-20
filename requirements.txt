@@ -1,1 +1,4 @@
-Flaskpandasnumpy<2.0.0openpyxlyt-dlpffmpeg-pythonpymysqlcryptography
+Flaskpandasnumpy<2.0.0openpyxlyt-dlpffmpeg-python
+yt-dlp
+DBUtils
+redisymysqlcryptography
